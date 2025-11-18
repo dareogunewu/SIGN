@@ -29,7 +29,7 @@
     - Least-privilege principle (Reports Reader role)
 
     Author: Security & Creativity Enhanced
-    Version: 2.3 - Stale Account Threshold Update
+    Version: 2.4 - Enhanced Progress Tracking
 #>
 
 [CmdletBinding()]
@@ -186,18 +186,38 @@ $samAccountColumn = $columns[0]
 $upnColumn = $columns[1]
 Write-Host "[+] Using Column 1: $samAccountColumn, Column 2: $upnColumn" -ForegroundColor Green
 
-# Initialize results array
+# Initialize results array and tracking variables
 $results = @()
 $counter = 0
+$startTime = Get-Date
+$successCount = 0
+$errorCount = 0
 
 # Process each account
 Write-Host "`n[*] Processing accounts..." -ForegroundColor Cyan
+Write-Host "[*] Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+
 foreach ($account in $accounts) {
     $counter++
     $samAccountName = $account.$samAccountColumn
     $upn = $account.$upnColumn
 
-    Write-Host "`n[$counter/$($accounts.Count)] Processing: $samAccountName" -ForegroundColor Yellow
+    # Calculate progress percentage
+    $percentComplete = [math]::Round(($counter / $accounts.Count) * 100, 1)
+
+    # Estimate time remaining
+    if ($counter -gt 1) {
+        $elapsedTime = (Get-Date) - $startTime
+        $avgTimePerAccount = $elapsedTime.TotalSeconds / ($counter - 1)
+        $remainingAccounts = $accounts.Count - $counter
+        $estimatedTimeRemaining = [TimeSpan]::FromSeconds($avgTimePerAccount * $remainingAccounts)
+        $etaString = " | ETA: $($estimatedTimeRemaining.ToString('hh\:mm\:ss'))"
+    } else {
+        $etaString = ""
+    }
+
+    Write-Host "`n[$counter/$($accounts.Count)] ($percentComplete%)$etaString - Processing: $samAccountName" -ForegroundColor Yellow
 
     # Security: Validate and sanitize inputs
     $samAccountNameSafe = $null
@@ -388,8 +408,22 @@ foreach ($account in $accounts) {
         }
     }
 
+    # Track success/error counts
+    if ($result.AzureADAccountFound) {
+        $successCount++
+    }
+    if ($result.ErrorMessage) {
+        $errorCount++
+    }
+
     # Add to results
     $results += $result
+
+    # Show periodic progress summary every 10 accounts
+    if ($counter % 10 -eq 0 -and $counter -lt $accounts.Count) {
+        Write-Host "`n  --- Quick Stats (so far) ---" -ForegroundColor DarkCyan
+        Write-Host "  Processed: $counter/$($accounts.Count) | Success: $successCount | Errors: $errorCount" -ForegroundColor DarkCyan
+    }
 }
 
 # Export results to CSV
@@ -424,21 +458,44 @@ Security Validations Passed: Input sanitization, Path validation
     Write-Error "Failed to export results: $_"
 }
 
+# Calculate execution metrics
+$endTime = Get-Date
+$totalDuration = $endTime - $startTime
+$avgTimePerAccount = $totalDuration.TotalSeconds / $accounts.Count
+
 # Display summary
 Write-Host "`n" -NoNewline
-Write-Host "=== SUMMARY ===" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "=== EXECUTION SUMMARY ===" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+
+Write-Host "`n--- Performance Metrics ---" -ForegroundColor Cyan
+Write-Host "Start Time: $($startTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor White
+Write-Host "End Time: $($endTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor White
+Write-Host "Total Duration: $($totalDuration.ToString('hh\:mm\:ss'))" -ForegroundColor White
+Write-Host "Average Time per Account: $([math]::Round($avgTimePerAccount, 2)) seconds" -ForegroundColor White
+
+Write-Host "`n--- Account Statistics ---" -ForegroundColor Cyan
 Write-Host "Total Accounts Processed: $($results.Count)" -ForegroundColor White
 Write-Host "Found in AD: $(($results | Where-Object {$_.ADAccountFound}).Count)" -ForegroundColor White
 Write-Host "Found in Azure AD: $(($results | Where-Object {$_.AzureADAccountFound}).Count)" -ForegroundColor White
 Write-Host "With Sign-in Activity: $(($results | Where-Object {$_.MostRecentSignIn}).Count)" -ForegroundColor White
 Write-Host "Interactive Sign-ins: $(($results | Where-Object {$_.SignInType -eq 'Interactive'}).Count)" -ForegroundColor White
 Write-Host "Non-Interactive Sign-ins: $(($results | Where-Object {$_.SignInType -eq 'Non-Interactive'}).Count)" -ForegroundColor White
+
 Write-Host "`n--- Stale Account Analysis ---" -ForegroundColor Cyan
 Write-Host "Stale Accounts (before July 22, 2025): $(($results | Where-Object {$_.StaleAccount -eq 'Stale'}).Count)" -ForegroundColor Red
 Write-Host "Active Accounts (after July 22, 2025): $(($results | Where-Object {$_.StaleAccount -eq 'Active'}).Count)" -ForegroundColor Green
 Write-Host "No Sign-In Data: $(($results | Where-Object {$_.StaleAccount -eq 'No Sign-In Data'}).Count)" -ForegroundColor Yellow
-Write-Host "`nErrors: $(($results | Where-Object {$_.ErrorMessage}).Count)" -ForegroundColor Yellow
-Write-Host "`nOutput file: $OutputCSV" -ForegroundColor Green
+
+Write-Host "`n--- Status ---" -ForegroundColor Cyan
+Write-Host "Successful Queries: $successCount" -ForegroundColor Green
+Write-Host "Errors Encountered: $(($results | Where-Object {$_.ErrorMessage}).Count)" -ForegroundColor $(if (($results | Where-Object {$_.ErrorMessage}).Count -gt 0) { 'Yellow' } else { 'Green' })
+
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "Output file: $OutputCSV" -ForegroundColor Green
+Write-Host "Audit log: $OutputCSV.audit.log" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Cyan
 
 # Disconnect from Microsoft Graph
 Disconnect-MgGraph | Out-Null

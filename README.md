@@ -272,6 +272,15 @@ Do not publicly disclose exploitation details until patched.
 
 ## Changelog
 
+### Version 2.4 (2025-11-17) - Enhanced Progress Tracking
+- ✅ **New**: Real-time progress percentage display (e.g., `[50/150] (33.3%)`)
+- ✅ **New**: ETA (Estimated Time to Completion) calculation
+- ✅ **New**: Periodic progress summaries every 10 accounts
+- ✅ **New**: Execution time tracking (start/end/duration)
+- ✅ **New**: Performance metrics (average time per account)
+- ✅ **Enhanced**: Comprehensive summary report with sections
+- ✅ **Enhanced**: Success/error counters displayed throughout execution
+
 ### Version 2.3 (2025-11-17) - Stale Account Threshold Update
 - ✅ **Updated**: Changed stale account threshold from July 22, 2024 to July 22, 2025
 - ✅ Aligns with future-looking account lifecycle management
