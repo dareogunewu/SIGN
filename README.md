@@ -82,7 +82,7 @@ The script generates a CSV file with the following columns:
 | `AzureAccountEnabled` | Account enabled status in Azure AD |
 | **`MostRecentSignIn`** | **Most recent sign-in timestamp** |
 | **`SignInType`** | **Source: "Interactive" or "Non-Interactive"** |
-| **`StaleAccount`** | **"Stale" (before July 22, 2024), "Active", or "No Sign-In Data"** |
+| **`StaleAccount`** | **"Stale" (before July 22, 2025), "Active", or "No Sign-In Data"** |
 | `InteractiveSignIn` | Latest interactive sign-in |
 | `NonInteractiveSignIn` | Latest non-interactive sign-in |
 | `ErrorMessage` | Any errors encountered |
@@ -272,9 +272,14 @@ Do not publicly disclose exploitation details until patched.
 
 ## Changelog
 
+### Version 2.3 (2025-11-17) - Stale Account Threshold Update
+- ✅ **Updated**: Changed stale account threshold from July 22, 2024 to July 22, 2025
+- ✅ Aligns with future-looking account lifecycle management
+- ✅ Updated all references in code, audit logs, and documentation
+
 ### Version 2.2 (2025-11-17) - Stale Account Detection
 - ✅ **New Feature**: Added `StaleAccount` column to identify inactive accounts
-- ✅ Automatically marks accounts with last sign-in before July 22, 2024 as "Stale"
+- ✅ Automatically marks accounts with last sign-in before threshold date as "Stale"
 - ✅ Enhanced summary reporting with stale account statistics
 - ✅ Updated audit log to include stale account counts
 - ✅ Color-coded console output (Red=Stale, Green=Active, Yellow=No Data)

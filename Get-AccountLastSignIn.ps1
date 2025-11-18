@@ -29,7 +29,7 @@
     - Least-privilege principle (Reports Reader role)
 
     Author: Security & Creativity Enhanced
-    Version: 2.2 - Stale Account Detection
+    Version: 2.3 - Stale Account Threshold Update
 #>
 
 [CmdletBinding()]
@@ -362,14 +362,14 @@ foreach ($account in $accounts) {
                 $result.SignInType = $mostRecent.Type
                 Write-Host "  [+] Most recent sign-in: $($mostRecent.DateTime) ($($mostRecent.Type))" -ForegroundColor Cyan
 
-                # Determine if account is stale (last sign-in before July 22, 2024)
-                $staleThresholdDate = Get-Date "2024-07-22"
+                # Determine if account is stale (last sign-in before July 22, 2025)
+                $staleThresholdDate = Get-Date "2025-07-22"
                 if ($mostRecent.DateTime -lt $staleThresholdDate) {
                     $result.StaleAccount = "Stale"
-                    Write-Host "  [!] Account is STALE (last sign-in before July 22, 2024)" -ForegroundColor Yellow
+                    Write-Host "  [!] Account is STALE (last sign-in before July 22, 2025)" -ForegroundColor Yellow
                 } else {
                     $result.StaleAccount = "Active"
-                    Write-Host "  [+] Account is Active (signed in after July 22, 2024)" -ForegroundColor Green
+                    Write-Host "  [+] Account is Active (signed in after July 22, 2025)" -ForegroundColor Green
                 }
             } else {
                 Write-Host "  [-] No sign-in activity found" -ForegroundColor Yellow
@@ -412,8 +412,8 @@ Output File: $OutputCSV
 Total Accounts Queried: $($accounts.Count)
 Successful Queries: $(($results | Where-Object {$_.AzureADAccountFound}).Count)
 Failed Queries: $(($results | Where-Object {$_.ErrorMessage}).Count)
-Stale Accounts (before 2024-07-22): $(($results | Where-Object {$_.StaleAccount -eq 'Stale'}).Count)
-Active Accounts (after 2024-07-22): $(($results | Where-Object {$_.StaleAccount -eq 'Active'}).Count)
+Stale Accounts (before 2025-07-22): $(($results | Where-Object {$_.StaleAccount -eq 'Stale'}).Count)
+Active Accounts (after 2025-07-22): $(($results | Where-Object {$_.StaleAccount -eq 'Active'}).Count)
 No Sign-In Data: $(($results | Where-Object {$_.StaleAccount -eq 'No Sign-In Data'}).Count)
 Security Validations Passed: Input sanitization, Path validation
 ========================================
@@ -434,8 +434,8 @@ Write-Host "With Sign-in Activity: $(($results | Where-Object {$_.MostRecentSign
 Write-Host "Interactive Sign-ins: $(($results | Where-Object {$_.SignInType -eq 'Interactive'}).Count)" -ForegroundColor White
 Write-Host "Non-Interactive Sign-ins: $(($results | Where-Object {$_.SignInType -eq 'Non-Interactive'}).Count)" -ForegroundColor White
 Write-Host "`n--- Stale Account Analysis ---" -ForegroundColor Cyan
-Write-Host "Stale Accounts (before July 22, 2024): $(($results | Where-Object {$_.StaleAccount -eq 'Stale'}).Count)" -ForegroundColor Red
-Write-Host "Active Accounts (after July 22, 2024): $(($results | Where-Object {$_.StaleAccount -eq 'Active'}).Count)" -ForegroundColor Green
+Write-Host "Stale Accounts (before July 22, 2025): $(($results | Where-Object {$_.StaleAccount -eq 'Stale'}).Count)" -ForegroundColor Red
+Write-Host "Active Accounts (after July 22, 2025): $(($results | Where-Object {$_.StaleAccount -eq 'Active'}).Count)" -ForegroundColor Green
 Write-Host "No Sign-In Data: $(($results | Where-Object {$_.StaleAccount -eq 'No Sign-In Data'}).Count)" -ForegroundColor Yellow
 Write-Host "`nErrors: $(($results | Where-Object {$_.ErrorMessage}).Count)" -ForegroundColor Yellow
 Write-Host "`nOutput file: $OutputCSV" -ForegroundColor Green
