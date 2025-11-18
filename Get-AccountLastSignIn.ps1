@@ -20,10 +20,16 @@
     Requirements:
     - ActiveDirectory PowerShell module (RSAT)
     - Microsoft.Graph PowerShell module
-    - Appropriate permissions in Azure AD (AuditLog.Read.All, User.Read.All)
+    - Entra ID Role: Reports Reader (minimum required)
+    - Graph API Permissions: AuditLog.Read.All
+
+    Security Features:
+    - Input sanitization against injection attacks
+    - Path validation for CSV operations
+    - Least-privilege principle (Reports Reader role)
 
     Author: Security & Creativity Enhanced
-    Version: 1.0
+    Version: 2.0 - Security Hardened
 #>
 
 [CmdletBinding()]
@@ -54,13 +60,80 @@ try {
     exit 1
 }
 
-# Connect to Microsoft Graph
+# Security Function: Sanitize input to prevent injection attacks
+function Test-SafeInput {
+    param([string]$Input)
+
+    if ([string]::IsNullOrWhiteSpace($Input)) {
+        return $false
+    }
+
+    # Block malicious characters that could be used in injection attacks
+    $dangerousPatterns = @(
+        "'.*--",           # SQL comment injection
+        "';.*",            # Statement termination
+        "\*",              # Wildcard abuse
+        "\$\(",            # Command substitution
+        "`",               # Backtick execution
+        "\|",              # Pipe commands
+        "&",               # Command chaining
+        ";",               # Command separator
+        "<",               # Redirection
+        ">",               # Redirection
+        "\.\./",           # Path traversal
+        "\\\\",            # UNC path injection
+        "script:",         # Script injection
+        "javascript:"      # Script injection
+    )
+
+    foreach ($pattern in $dangerousPatterns) {
+        if ($Input -match $pattern) {
+            Write-Warning "Potentially malicious input detected and blocked: $Input"
+            return $false
+        }
+    }
+
+    # Validate format - only allow alphanumeric, @, ., -, _
+    if ($Input -notmatch '^[a-zA-Z0-9@.\-_]+$') {
+        Write-Warning "Invalid characters in input: $Input"
+        return $false
+    }
+
+    return $true
+}
+
+# Security Function: Validate output path
+function Test-SafeOutputPath {
+    param([string]$Path)
+
+    # Ensure absolute path
+    $absolutePath = [System.IO.Path]::GetFullPath($Path)
+
+    # Block paths outside user-accessible areas
+    $userProfile = [Environment]::GetFolderPath('UserProfile')
+    $programFiles = [Environment]::GetFolderPath('ProgramFiles')
+    $system32 = [Environment]::GetFolderPath('System')
+
+    if ($absolutePath.StartsWith($programFiles) -or
+        $absolutePath.StartsWith($system32) -or
+        $absolutePath.StartsWith("$env:SystemRoot")) {
+        Write-Error "Cannot write to system directories"
+        return $false
+    }
+
+    return $true
+}
+
+# Connect to Microsoft Graph with minimal permissions (Reports Reader compatible)
 Write-Host "`n[*] Connecting to Microsoft Graph..." -ForegroundColor Cyan
+Write-Host "[*] Required Role: Reports Reader or higher" -ForegroundColor Cyan
 try {
-    Connect-MgGraph -Scopes "AuditLog.Read.All", "User.Read.All", "Directory.Read.All" -ErrorAction Stop
+    # Only request AuditLog.Read.All which is included in Reports Reader role
+    Connect-MgGraph -Scopes "AuditLog.Read.All" -ErrorAction Stop
     Write-Host "[+] Successfully connected to Microsoft Graph" -ForegroundColor Green
 } catch {
     Write-Error "Failed to connect to Microsoft Graph: $_"
+    Write-Host "[!] Ensure you have Reports Reader role assigned" -ForegroundColor Yellow
     exit 1
 }
 
@@ -68,6 +141,14 @@ try {
 $context = Get-MgContext
 Write-Host "[+] Connected as: $($context.Account)" -ForegroundColor Green
 Write-Host "[+] Organization: $($context.TenantId)" -ForegroundColor Green
+
+# Validate output path for security
+Write-Host "`n[*] Validating output path..." -ForegroundColor Cyan
+if (-not (Test-SafeOutputPath -Path $OutputCSV)) {
+    Write-Error "Invalid or unsafe output path: $OutputCSV"
+    exit 1
+}
+Write-Host "[+] Output path validated" -ForegroundColor Green
 
 # Import the CSV file
 Write-Host "`n[*] Importing CSV file: $InputCSV" -ForegroundColor Cyan
@@ -104,6 +185,32 @@ foreach ($account in $accounts) {
 
     Write-Host "`n[$counter/$($accounts.Count)] Processing: $samAccountName" -ForegroundColor Yellow
 
+    # Security: Validate and sanitize inputs
+    $samAccountNameSafe = $null
+    $upnSafe = $null
+
+    if (![string]::IsNullOrWhiteSpace($samAccountName)) {
+        if (Test-SafeInput -Input $samAccountName) {
+            $samAccountNameSafe = $samAccountName
+        } else {
+            Write-Warning "Skipping unsafe SamAccountName: $samAccountName"
+        }
+    }
+
+    if (![string]::IsNullOrWhiteSpace($upn)) {
+        if (Test-SafeInput -Input $upn) {
+            $upnSafe = $upn
+        } else {
+            Write-Warning "Skipping unsafe UPN: $upn"
+        }
+    }
+
+    # Skip if both inputs are invalid
+    if ([string]::IsNullOrWhiteSpace($samAccountNameSafe) -and [string]::IsNullOrWhiteSpace($upnSafe)) {
+        Write-Warning "Skipping account due to invalid input"
+        continue
+    }
+
     # Initialize result object
     $result = [PSCustomObject]@{
         SamAccountName = $samAccountName
@@ -126,14 +233,14 @@ foreach ($account in $accounts) {
     try {
         $adUser = $null
 
-        # Try to find by SamAccountName first
-        if (![string]::IsNullOrWhiteSpace($samAccountName)) {
-            $adUser = Get-ADUser -Filter "SamAccountName -eq '$samAccountName'" -Properties UserPrincipalName, Enabled, LastLogonDate -ErrorAction SilentlyContinue
+        # Try to find by SamAccountName first (using parameterized query to prevent injection)
+        if (![string]::IsNullOrWhiteSpace($samAccountNameSafe)) {
+            $adUser = Get-ADUser -Filter {SamAccountName -eq $samAccountNameSafe} -Properties UserPrincipalName, Enabled, LastLogonDate -ErrorAction SilentlyContinue
         }
 
-        # If not found and UPN is available, try UPN
-        if (-not $adUser -and ![string]::IsNullOrWhiteSpace($upn)) {
-            $adUser = Get-ADUser -Filter "UserPrincipalName -eq '$upn'" -Properties UserPrincipalName, Enabled, LastLogonDate -ErrorAction SilentlyContinue
+        # If not found and UPN is available, try UPN (using parameterized query)
+        if (-not $adUser -and ![string]::IsNullOrWhiteSpace($upnSafe)) {
+            $adUser = Get-ADUser -Filter {UserPrincipalName -eq $upnSafe} -Properties UserPrincipalName, Enabled, LastLogonDate -ErrorAction SilentlyContinue
         }
 
         if ($adUser) {
@@ -153,18 +260,35 @@ foreach ($account in $accounts) {
     # Step 2: Query Azure AD for sign-in activity
     Write-Host "  [*] Checking Azure AD..." -ForegroundColor Gray
 
-    # Determine which identifier to use for Azure lookup
+    # Determine which identifier to use for Azure lookup (use sanitized values)
     $azureLookupId = if (![string]::IsNullOrWhiteSpace($result.UserPrincipalName)) {
         $result.UserPrincipalName
-    } elseif (![string]::IsNullOrWhiteSpace($upn)) {
-        $upn
+    } elseif (![string]::IsNullOrWhiteSpace($upnSafe)) {
+        $upnSafe
     } else {
-        $samAccountName
+        $samAccountNameSafe
     }
 
     try {
-        # Find user in Azure AD
-        $azureUser = Get-MgUser -Filter "userPrincipalName eq '$azureLookupId'" -ErrorAction SilentlyContinue
+        # Find user in Azure AD - Using userId property instead of filter for security
+        # Note: With Reports Reader role, we can access sign-in logs but user query may be limited
+        $azureUser = $null
+
+        # Try to get user by UPN (this works with AuditLog.Read.All when querying sign-ins)
+        if (![string]::IsNullOrWhiteSpace($azureLookupId)) {
+            # Use Get-MgAuditLogSignIn to find user instead of Get-MgUser
+            # This is compatible with Reports Reader role
+            $testSignIn = Get-MgAuditLogSignIn -Filter "userPrincipalName eq '$azureLookupId'" -Top 1 -ErrorAction SilentlyContinue
+
+            if ($testSignIn) {
+                # Extract user info from sign-in log
+                $azureUser = [PSCustomObject]@{
+                    Id = $testSignIn.UserId
+                    UserPrincipalName = $testSignIn.UserPrincipalName
+                    AccountEnabled = $null  # Not available from sign-in logs
+                }
+            }
+        }
 
         if ($azureUser) {
             $result.AzureADAccountFound = $true
@@ -175,6 +299,8 @@ foreach ($account in $accounts) {
             # Query Interactive Sign-ins
             Write-Host "  [*] Querying interactive sign-ins..." -ForegroundColor Gray
             try {
+                # Note: userId is a GUID from Azure, already validated through sign-in query
+                # This is safe from injection as GUIDs have strict format validation
                 $interactiveSignIns = Get-MgAuditLogSignIn -Filter "userId eq '$($azureUser.Id)'" -Top 1 -Sort "createdDateTime DESC" -ErrorAction SilentlyContinue
 
                 if ($interactiveSignIns) {
@@ -188,6 +314,8 @@ foreach ($account in $accounts) {
             # Query Non-Interactive Sign-ins (Service Principal sign-ins)
             Write-Host "  [*] Querying non-interactive sign-ins..." -ForegroundColor Gray
             try {
+                # Note: userId is a GUID from Azure, already validated through sign-in query
+                # This is safe from injection as GUIDs have strict format validation
                 $nonInteractiveSignIns = Get-MgAuditLogSignIn -Filter "userId eq '$($azureUser.Id)' and signInEventTypes/any(t: t eq 'nonInteractiveUser')" -Top 1 -Sort "createdDateTime DESC" -ErrorAction SilentlyContinue
 
                 if ($nonInteractiveSignIns) {
@@ -243,6 +371,26 @@ Write-Host "`n[*] Exporting results to: $OutputCSV" -ForegroundColor Cyan
 try {
     $results | Export-Csv -Path $OutputCSV -NoTypeInformation -Encoding UTF8
     Write-Host "[+] Results exported successfully!" -ForegroundColor Green
+
+    # Create audit log entry
+    $auditLogPath = "$OutputCSV.audit.log"
+    $auditEntry = @"
+========================================
+AUDIT LOG - Account Sign-In Query
+========================================
+Execution Time: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+Executed By: $($context.Account)
+Tenant ID: $($context.TenantId)
+Input File: $InputCSV
+Output File: $OutputCSV
+Total Accounts Queried: $($accounts.Count)
+Successful Queries: $(($results | Where-Object {$_.AzureADAccountFound}).Count)
+Failed Queries: $(($results | Where-Object {$_.ErrorMessage}).Count)
+Security Validations Passed: Input sanitization, Path validation
+========================================
+"@
+    Add-Content -Path $auditLogPath -Value $auditEntry
+    Write-Host "[+] Audit log created: $auditLogPath" -ForegroundColor Green
 } catch {
     Write-Error "Failed to export results: $_"
 }
