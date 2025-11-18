@@ -82,6 +82,7 @@ The script generates a CSV file with the following columns:
 | `AzureAccountEnabled` | Account enabled status in Azure AD |
 | **`MostRecentSignIn`** | **Most recent sign-in timestamp** |
 | **`SignInType`** | **Source: "Interactive" or "Non-Interactive"** |
+| **`StaleAccount`** | **"Stale" (before July 22, 2024), "Active", or "No Sign-In Data"** |
 | `InteractiveSignIn` | Latest interactive sign-in |
 | `NonInteractiveSignIn` | Latest non-interactive sign-in |
 | `ErrorMessage` | Any errors encountered |
@@ -156,6 +157,16 @@ $date = Get-Date -Format "yyyy-MM"
 .\Get-AccountLastSignIn.ps1 `
     -InputCSV "privileged_accounts.csv" `
     -OutputCSV "Compliance\SignInAudit_$date.csv"
+```
+
+### Find Stale Accounts for Cleanup
+```powershell
+# Run the script
+.\Get-AccountLastSignIn.ps1 -InputCSV "accounts.csv" -OutputCSV "results.csv"
+
+# Filter for stale accounts only
+Import-Csv "results.csv" | Where-Object {$_.StaleAccount -eq "Stale"} |
+    Export-Csv "stale_accounts_for_review.csv" -NoTypeInformation
 ```
 
 ---
@@ -260,6 +271,13 @@ Do not publicly disclose exploitation details until patched.
 ---
 
 ## Changelog
+
+### Version 2.2 (2025-11-17) - Stale Account Detection
+- ✅ **New Feature**: Added `StaleAccount` column to identify inactive accounts
+- ✅ Automatically marks accounts with last sign-in before July 22, 2024 as "Stale"
+- ✅ Enhanced summary reporting with stale account statistics
+- ✅ Updated audit log to include stale account counts
+- ✅ Color-coded console output (Red=Stale, Green=Active, Yellow=No Data)
 
 ### Version 2.1 (2025-11-17) - Edge Case Security Fix
 - ✅ **Critical Fix**: Now allows legitimate computer accounts ending with `$` (e.g., `COMPUTER$`)

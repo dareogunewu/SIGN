@@ -29,7 +29,7 @@
     - Least-privilege principle (Reports Reader role)
 
     Author: Security & Creativity Enhanced
-    Version: 2.1 - Edge Case Security Fix
+    Version: 2.2 - Stale Account Detection
 #>
 
 [CmdletBinding()]
@@ -237,6 +237,7 @@ foreach ($account in $accounts) {
         AzureAccountEnabled = $null
         MostRecentSignIn = $null
         SignInType = $null
+        StaleAccount = $null
         InteractiveSignIn = $null
         NonInteractiveSignIn = $null
         ErrorMessage = $null
@@ -360,8 +361,19 @@ foreach ($account in $accounts) {
                 $result.MostRecentSignIn = $mostRecent.DateTime
                 $result.SignInType = $mostRecent.Type
                 Write-Host "  [+] Most recent sign-in: $($mostRecent.DateTime) ($($mostRecent.Type))" -ForegroundColor Cyan
+
+                # Determine if account is stale (last sign-in before July 22, 2024)
+                $staleThresholdDate = Get-Date "2024-07-22"
+                if ($mostRecent.DateTime -lt $staleThresholdDate) {
+                    $result.StaleAccount = "Stale"
+                    Write-Host "  [!] Account is STALE (last sign-in before July 22, 2024)" -ForegroundColor Yellow
+                } else {
+                    $result.StaleAccount = "Active"
+                    Write-Host "  [+] Account is Active (signed in after July 22, 2024)" -ForegroundColor Green
+                }
             } else {
                 Write-Host "  [-] No sign-in activity found" -ForegroundColor Yellow
+                $result.StaleAccount = "No Sign-In Data"
             }
 
         } else {
@@ -400,6 +412,9 @@ Output File: $OutputCSV
 Total Accounts Queried: $($accounts.Count)
 Successful Queries: $(($results | Where-Object {$_.AzureADAccountFound}).Count)
 Failed Queries: $(($results | Where-Object {$_.ErrorMessage}).Count)
+Stale Accounts (before 2024-07-22): $(($results | Where-Object {$_.StaleAccount -eq 'Stale'}).Count)
+Active Accounts (after 2024-07-22): $(($results | Where-Object {$_.StaleAccount -eq 'Active'}).Count)
+No Sign-In Data: $(($results | Where-Object {$_.StaleAccount -eq 'No Sign-In Data'}).Count)
 Security Validations Passed: Input sanitization, Path validation
 ========================================
 "@
@@ -418,7 +433,11 @@ Write-Host "Found in Azure AD: $(($results | Where-Object {$_.AzureADAccountFoun
 Write-Host "With Sign-in Activity: $(($results | Where-Object {$_.MostRecentSignIn}).Count)" -ForegroundColor White
 Write-Host "Interactive Sign-ins: $(($results | Where-Object {$_.SignInType -eq 'Interactive'}).Count)" -ForegroundColor White
 Write-Host "Non-Interactive Sign-ins: $(($results | Where-Object {$_.SignInType -eq 'Non-Interactive'}).Count)" -ForegroundColor White
-Write-Host "Errors: $(($results | Where-Object {$_.ErrorMessage}).Count)" -ForegroundColor Yellow
+Write-Host "`n--- Stale Account Analysis ---" -ForegroundColor Cyan
+Write-Host "Stale Accounts (before July 22, 2024): $(($results | Where-Object {$_.StaleAccount -eq 'Stale'}).Count)" -ForegroundColor Red
+Write-Host "Active Accounts (after July 22, 2024): $(($results | Where-Object {$_.StaleAccount -eq 'Active'}).Count)" -ForegroundColor Green
+Write-Host "No Sign-In Data: $(($results | Where-Object {$_.StaleAccount -eq 'No Sign-In Data'}).Count)" -ForegroundColor Yellow
+Write-Host "`nErrors: $(($results | Where-Object {$_.ErrorMessage}).Count)" -ForegroundColor Yellow
 Write-Host "`nOutput file: $OutputCSV" -ForegroundColor Green
 
 # Disconnect from Microsoft Graph
