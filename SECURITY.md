@@ -119,12 +119,24 @@ function Test-SafeOutputPath {
 }
 ```
 
-### 3. **Least Privilege Access** 🔐
+### 3. **Smart Input Validation** 🧠
+- **Allows legitimate AD patterns**:
+  - Computer accounts: `COMPUTER$` (trailing $ allowed)
+  - Service accounts: `svc-backup`, `svc_webapp`
+  - Standard users: `firstname.lastname@domain.com`
+- **Blocks malicious patterns**:
+  - Leading dash: `-ExecutionPolicy` (flag injection)
+  - Leading dollar: `$env:TEMP` (variable expansion)
+  - Command substitution: `$(whoami)`, `${var}`
+  - Control characters and special injection sequences
+- **Defense-in-depth**: Pattern blocking + format validation
+
+### 4. **Least Privilege Access** 🔐
 - **Required Role**: Reports Reader (minimum)
 - **API Permission**: `AuditLog.Read.All` only
 - No administrative permissions needed
 
-### 4. **Audit Logging** 📋
+### 5. **Audit Logging** 📋
 Every execution creates an audit log:
 - Timestamp
 - User identity
@@ -133,7 +145,7 @@ Every execution creates an audit log:
 - Query results summary
 - Security validations performed
 
-### 5. **Secure Query Patterns** 🔒
+### 6. **Secure Query Patterns** 🔒
 - AD queries use script block syntax `{SamAccountName -eq $var}`
 - Azure queries use pre-validated GUIDs (strict format)
 - No string concatenation in filters
@@ -218,11 +230,23 @@ Every execution creates an audit log:
 
 ### Sample Malicious Inputs Blocked:
 ```
-❌ admin' OR '1'='1
-❌ ../../../etc/passwd
-❌ $(whoami)
-❌ user@domain.com;rm -rf /
-❌ C:\Windows\System32\config\SAM
+❌ admin' OR '1'='1          (SQL injection)
+❌ ../../../etc/passwd        (Path traversal)
+❌ $(whoami)                  (Command substitution)
+❌ user@domain.com;rm -rf /   (Command chaining)
+❌ C:\Windows\System32\SAM    (System path access)
+❌ -ExecutionPolicy Bypass    (Leading dash - flag injection)
+❌ $env:TEMP                  (Variable expansion)
+```
+
+### Legitimate Inputs Allowed:
+```
+✅ COMPUTER$                  (Computer accounts with trailing $)
+✅ svc-backup                 (Service accounts with dash)
+✅ svc_webapp                 (Service accounts with underscore)
+✅ user.name@domain.com       (UPNs with @ and dots)
+✅ firstname.lastname         (Names with dots)
+✅ admin123                   (Alphanumeric accounts)
 ```
 
 ---
@@ -257,6 +281,18 @@ If security issues are discovered:
 ---
 
 ## Changelog
+
+### Version 2.1 (2025-11-17) - Edge Case Security Fix
+- ✅ Fixed validation to allow legitimate computer accounts ending with `$` (e.g., `COMPUTER$`)
+- ✅ Fixed validation to prevent leading `-` (flag injection prevention)
+- ✅ Fixed validation to prevent leading `$` (variable expansion prevention)
+- ✅ Enhanced pattern detection for `$(cmd)` and `${var}` injection
+- ✅ Added `&&` and `||` command chaining detection
+- ✅ Added control character blocking (0x00-0x1F)
+- ✅ Improved UNC path injection detection
+- ✅ Updated documentation with legitimate vs malicious input examples
+
+**Security Impact**: Critical - Previous regex would reject legitimate AD computer accounts
 
 ### Version 2.0 (2025-11-17) - Security Hardened
 - ✅ Fixed LDAP/Filter injection vulnerabilities

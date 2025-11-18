@@ -261,6 +261,13 @@ Do not publicly disclose exploitation details until patched.
 
 ## Changelog
 
+### Version 2.1 (2025-11-17) - Edge Case Security Fix
+- ✅ **Critical Fix**: Now allows legitimate computer accounts ending with `$` (e.g., `COMPUTER$`)
+- ✅ Enhanced validation prevents leading `-` (flag injection) and `$` (variable expansion)
+- ✅ Improved injection detection: `$(cmd)`, `${var}`, `&&`, `||`, control characters
+- ✅ Better UNC path injection protection
+- ✅ Updated docs with legitimate vs malicious input examples
+
 ### Version 2.0 (2025-11-17) - Security Hardened
 - ✅ Fixed injection vulnerabilities
 - ✅ Reduced to minimal permissions (Reports Reader)

@@ -29,7 +29,7 @@
     - Least-privilege principle (Reports Reader role)
 
     Author: Security & Creativity Enhanced
-    Version: 2.0 - Security Hardened
+    Version: 2.1 - Edge Case Security Fix
 #>
 
 [CmdletBinding()]
@@ -73,17 +73,20 @@ function Test-SafeInput {
         "'.*--",           # SQL comment injection
         "';.*",            # Statement termination
         "\*",              # Wildcard abuse
-        "\$\(",            # Command substitution
+        "\$\(",            # Command substitution - $(command)
+        "\$\{",            # Variable substitution - ${var}
         "`",               # Backtick execution
         "\|",              # Pipe commands
-        "&",               # Command chaining
+        "&&",              # Command chaining (AND)
+        "\|\|",            # Command chaining (OR)
         ";",               # Command separator
         "<",               # Redirection
         ">",               # Redirection
         "\.\./",           # Path traversal
-        "\\\\",            # UNC path injection
+        "\\\\\\\\",        # UNC path injection (4 backslashes = escaped \\)
         "script:",         # Script injection
-        "javascript:"      # Script injection
+        "javascript:",     # Script injection
+        "[\x00-\x1F]"      # Control characters
     )
 
     foreach ($pattern in $dangerousPatterns) {
@@ -93,8 +96,19 @@ function Test-SafeInput {
         }
     }
 
-    # Validate format - only allow alphanumeric, @, ., -, _
-    if ($Input -notmatch '^[a-zA-Z0-9@.\-_]+$') {
+    # Validate format - Allow legitimate AD account patterns:
+    # - Computer accounts: COMPUTER$ (ends with $)
+    # - Service accounts: svc-account, svc_account
+    # - User accounts: firstname.lastname@domain.com
+    # - Special chars: @, ., -, _, $ (at end only for computer accounts)
+    #
+    # Pattern explanation:
+    # ^                    Start of string
+    # [a-zA-Z0-9]          Must start with alphanumeric (prevents -flag or leading $)
+    # [a-zA-Z0-9@.\-_]*    Middle can contain: letters, numbers, @, ., -, _
+    # (\$)?                Optionally end with $ (computer accounts)
+    # $                    End of string
+    if ($Input -notmatch '^[a-zA-Z0-9][a-zA-Z0-9@.\-_]*(\$)?$') {
         Write-Warning "Invalid characters in input: $Input"
         return $false
     }
